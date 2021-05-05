@@ -1429,6 +1429,9 @@ cn_tree_lookup(
     u16                      pc_lvl, pc_lvl_start, pc_depth;
     bool                     pfx_hashing, first;
     void *                   wbti;
+    u64                      t0, t1, t2, t3;
+    static int               count = 0;
+    bool		     debug = false;
 
     __builtin_prefetch(tree);
 
@@ -1439,6 +1442,11 @@ cn_tree_lookup(
     pc_lvl = CNGET_LMAX;
     pc_lvl_start = 0;
 
+
+    if (++count % 10000 == 0) {
+	debug = true;
+    	t0 = get_time_ns();
+    }
     pc_start = perfc_lat_start(pc);
     if (pc_start > 0) {
         if (perfc_ison(pc, PERFC_LT_CNGET_GET_L0)) {
@@ -1470,6 +1478,8 @@ cn_tree_lookup(
     first = true;
 
     rmlock_rlock(&tree->ct_lock, &lock);
+    if (debug)
+    	t1 = get_time_ns();
     while (node) {
         bool yield = false;
 
@@ -1550,6 +1560,8 @@ cn_tree_lookup(
     rmlock_runlock(lock);
 
 done:
+    if (debug)
+    	t2 = get_time_ns();
     if (pc && !wbti) {
         /* latencies first - close in time */
         perfc_lat_record(pc, PERFC_LT_CNGET_GET, pc_start);
@@ -1575,6 +1587,16 @@ done:
         kvset_wbti_free(wbti);
         if (pc)
             perfc_lat_record(pc, PERFC_LT_CNGET_PROBEPFX, pc_start);
+    }
+    if (debug) {
+    	t3 = get_time_ns();
+	printf("[%s] %ld %ld %ld , pc_depth: %d , pc_nkvset: %d\n", 
+			__func__,
+			(t1 - t0)/1000,
+			(t2 - t1)/1000,
+			(t3 - t2)/1000,
+			pc_depth,
+			pc_nkvset);
     }
 
     return err;
@@ -3446,13 +3468,26 @@ cn_comp_compact(struct cn_compaction_work *w)
      * Discarding the kcompation for bandwidth calculation for now.
      */
     if (kcompact) {
-        ns = 0;
+        //ns = 0;
+        ns = get_time_ns() - ns;
         ingestsz = 0;
     } else {
         ns = get_time_ns() - ns;
         ingestsz = w->cw_stats.ms_key_bytes_out;
         ingestsz += w->cw_stats.ms_val_bytes_out;
     }
+
+    printf("[%s] (%s) <%ld> latency(ms): %ld,  keys_in(10^3): %ld, keys_out(10^3): %ld, "
+		   "key_Mbytes_in: %ld , key_Mbytes_out: %ld, val_Mbytes_out: %ld\n", 
+		    __func__, 
+		    w->cw_threadname, 
+		    pthread_self(),
+		    ns/1000000,
+		    w->cw_stats.ms_keys_in /1000,
+		    w->cw_stats.ms_keys_out / 1000,
+		    w->cw_stats.ms_key_bytes_in >> 20,
+		    w->cw_stats.ms_key_bytes_out >> 20,
+		    w->cw_stats.ms_val_bytes_out >> 20);
 
     if (merr_errno(err) == ESHUTDOWN && atomic_read(w->cw_cancel_request))
         w->cw_canceled = true;

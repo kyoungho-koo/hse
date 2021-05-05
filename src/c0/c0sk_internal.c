@@ -833,6 +833,9 @@ c0sk_ingest_worker(struct work_struct *work)
         }
     }
 
+    if (debug)
+        ingest->t3b = get_time_ns();
+
     if (val_head) {
         *val_tailp = NULL;
 
@@ -934,10 +937,25 @@ exit_err:
     }
 
     if (debug) {
+    	char namebuf[16];
+	pthread_t tid;
+	tid = pthread_self();
+        pthread_getname_np(tid, namebuf, sizeof(namebuf));
         ingest->t7 = get_time_ns();
 
         ingest->gen = c0kvms_gen_read(kvms);
         ingest->gencur = c0kvms_gen_current(kvms);
+	printf("[%s] (%s) <%ld> %ld %ld(%ld %ld) %ld %ld %ld\n", 
+			__func__,
+			namebuf,
+			tid,
+			(ingest->t3 - ingest->t0)/1000000,
+			(ingest->t4 - ingest->t3)/1000000,
+			(ingest->t3b - ingest->t3)/1000000,
+			(ingest->t4 - ingest->t3b)/1000000,
+			(ingest->t5 - ingest->t4)/1000000,
+			(ingest->t6 - ingest->t5)/1000000,
+			(ingest->t7 - ingest->t6)/1000000);
     }
 
     c0sk_ingest_bldr_put(ingest, c0_vlen, c1_vlen, ext_bldr);

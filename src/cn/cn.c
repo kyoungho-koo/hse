@@ -812,6 +812,13 @@ cn_ingestv(
             HSE_SLOG_FIELD("vwlen", "%lu", (ulong)kst.kst_vwlen),
             HSE_SLOG_FIELD("vulen", "%lu", (ulong)kst.kst_vulen),
             HSE_SLOG_END);
+	printf("[%s] ingestid: %lu kvsets: %lu keys: %lu kblks: %lu vblks: %lu\n", 
+			__func__,
+			(ulong)ingestid,
+			(ulong)kst.kst_kvsets,
+			(ulong)kst.kst_keys,
+			(ulong)kst.kst_kblks,
+			(ulong)kst.kst_vblks);
     }
 
 done:
