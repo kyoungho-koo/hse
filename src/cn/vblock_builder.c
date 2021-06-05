@@ -122,26 +122,53 @@ _vblock_start(struct vblock_builder *bld)
 }
 
 static merr_t
-_vblock_write(struct vblock_builder *bld)
+_vblock_write(struct vblock_builder *bld, uint debug)
 {
     merr_t                 err;
     struct iovec           iov;
     bool                   ingest;
     struct cn_merge_stats *stats = bld->mstats;
     u64                    tstart;
+   // static u64   trigger;
+    /*
+    static int count;
+    static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
+    u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0 , t5 = 0;
+    */
 
-    assert(bld->blkid);
+    /*
+    if (debug)
+	t1 = get_time_ns();
+    */
 
     ingest = bld->flags & KVSET_BUILDER_FLAGS_INGEST;
     iov.iov_base = bld->wbuf;
     iov.iov_len = bld->wbuf_len;
 
+    /*
+    if (debug)
+        t2 = get_time_ns();
+    if (debug) {
+        trigger = debug/10;
+	tbkt_delay (trigger);
+	printf("[%s] tbkt_delay %ld\n", __func__, trigger);
+    }
+	*/
     if (!ingest) {
         struct tbkt *tb = cn_get_tbkt_maint(bld->cn);
 
-        if (tb)
-            tbkt_delay(tbkt_request(tb, iov.iov_len));
+        if (tb) {
+	    u64 delay = tbkt_request(tb, iov.iov_len);
+            tbkt_delay(delay);
+	    if (delay)
+	    	printf("[%s] tbkt_delay %ld\n", __func__, delay);
+	}
     }
+
+    /*
+    if (debug)
+	t3 = get_time_ns();
+    */
 
     /* Function mblk_blow_chunks(), which is used in the kblock builder,
      * is not needed here because our write buffer is already
@@ -152,6 +179,9 @@ _vblock_write(struct vblock_builder *bld)
 
     err = mpool_mblock_write(bld->ds, bld->blkid, &iov, 1);
 
+    /*
+    t4 = get_time_ns();
+    */
     if (stats)
         count_ops(&stats->ms_vblk_write, 1, iov.iov_len, get_time_ns() - tstart);
 
@@ -164,6 +194,20 @@ _vblock_write(struct vblock_builder *bld)
 
     perfc_inc(bld->pc, PERFC_RA_CNCOMP_WREQS);
     perfc_add(bld->pc, PERFC_RA_CNCOMP_WBYTES, bld->wbuf_len);
+    /*
+    if (debug) {
+	    t5 = get_time_ns();
+	    count ++;
+	    if (count > 1000) {
+		    intv1 += t2-t1;
+		    intv2 += t3-t2;
+		    intv3 += t4-t3;
+		    intv4 += t5-t4;
+		    printf("[%s] %d %ld %ld %ld %ld\n", __func__, count, intv1, intv2, intv3, intv4);
+		    count = intv1 = intv2 = intv3 = intv4 = 0;
+	    }
+    }
+    */
 
     return 0;
 }
@@ -190,7 +234,7 @@ _vblock_finish(struct vblock_builder *bld)
 
         memset(bld->wbuf + bld->wbuf_off, 0, zfill_len);
 
-        err = _vblock_write(bld);
+        err = _vblock_write(bld, 0);
         bld->wbuf_len = buflen;
     }
 
@@ -274,10 +318,16 @@ vbb_add_entry(
     uint                   vlen, /* on-media length */
     u64 *                  vbidout,
     uint *                 vbidxout,
-    uint *                 vboffout)
+    uint *                 vboffout,
+    uint 		   debug)
 {
     merr_t err;
     uint   voff, space, bytes;
+    static int count;
+    static u64 loop, write;
+    static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
+    u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0 , t5 = 0;
+    static u64 trigger = 0;
 
     assert(!bld->destruct);
 
@@ -303,6 +353,9 @@ vbb_add_entry(
     voff = 0;
 
     while (voff < vlen) {
+	loop ++;
+    	if (debug)
+	    t1 = get_time_ns();
 
         assert(bld->wbuf_off < bld->wbuf_len);
 
@@ -312,6 +365,8 @@ vbb_add_entry(
         if (bytes > space)
             bytes = space;
 
+	if (debug)
+	    t2 = get_time_ns();
         memcpy(bld->wbuf + bld->wbuf_off, vdata + voff, bytes);
 
         bld->wbuf_off += bytes;
@@ -319,10 +374,24 @@ vbb_add_entry(
 
         /* Issue write if buffer is full. */
         if (bld->wbuf_off == bld->wbuf_len) {
-            err = _vblock_write(bld);
+	    write ++;
+            if (debug) {
+	        t4 = get_time_ns();
+	    }
+            err = _vblock_write(bld, trigger);
+	    trigger = 0;
+            if (debug) {
+	        t5 = get_time_ns();
+		intv4 += t5 - t4;
+	    }
             if (ev(err))
                 return err;
         }
+        if (debug) {
+	    t3 = get_time_ns();
+    	    intv1 += t2-t1;
+    	    intv2 += t3-t2;
+	}
     }
 
     assert(bld->wbuf_off < bld->wbuf_len);
@@ -334,6 +403,17 @@ vbb_add_entry(
     bld->vblk_off += vlen;
     bld->vsize += vlen;
 
+    if (debug) {
+	count ++;
+    	//intv3 += t4-t3;
+	if (count > 1000000) {
+	    printf("[%s] %d %ld %ld %ld %ld %ld\n", __func__, count, intv1, intv2, intv4, loop, write);
+	    if (write && intv4/write > 50000) {
+		trigger = intv4/write;
+	    }
+	    count = intv1 = intv2 = intv3 = intv4 = loop = write = 0;
+	}
+    }
     return 0;
 }
 

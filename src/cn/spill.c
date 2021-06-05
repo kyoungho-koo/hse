@@ -226,6 +226,12 @@ kv_spill(struct cn_compaction_work *w)
     uint dbg_prev_src __maybe_unused;
     uint dbg_nvals_this_key __maybe_unused;
     bool dbg_dup __maybe_unused;
+    int new_key_count = 0;
+    int get_values_count = 0;
+    u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 =  0, t9 = 0;
+    //u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+    u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0, intv5 = 0, intv6 = 0, intv7 = 0, intv8 = 0 ;
+
 
     if (w->cw_prog_interval && w->cw_progress)
         tprog = get_time_ns();
@@ -255,6 +261,9 @@ kv_spill(struct cn_compaction_work *w)
     tstart = perfc_ison(w->cw_pc, PERFC_DI_CNCOMP_VGET) ? 1 : 0;
 
 new_key:
+//    t3 = get_time_ns();
+    t1 = get_time_ns();
+    new_key_count ++;
     pt_spread = 0;
     childmask = 0;
 
@@ -320,6 +329,7 @@ new_key:
     dbg_nvals_this_key = 0;
     dbg_dup = false;
 
+    t2 = get_time_ns();
 get_values:
 
     while (!bg_val) {
@@ -347,6 +357,7 @@ get_values:
 
         direct = omlen > direct_read_len;
 
+    	t3 = get_time_ns();
         /* [HSE_REVISIT] direct read path allocates buffer. Performing
          * direct reads into the buffer in kvset builder without this
          * is a future opportunity.
@@ -458,7 +469,7 @@ get_values:
                     if (w->cw_drop_tombv[i] && bg_val)
                         continue;
 
-                    err = kvset_builder_add_val(w->cw_child[i], seq, vdata, vlen, 0, NULL);
+                    err = kvset_builder_add_val(w->cw_child[i], seq, vdata, vlen, 0, NULL, 0);
                     if (ev(err))
                         goto done;
 
@@ -467,10 +478,12 @@ get_values:
                     pt_spread |= (1 << i);
                 }
             } else {
+    		t4 = get_time_ns();
                 if (w->cw_drop_tombv[cnum] && HSE_CORE_IS_TOMB(vdata) && bg_val)
                     continue; /* skip value */
 
-                err = kvset_builder_add_val(child, seq, vdata, vlen, complen, NULL);
+                err = kvset_builder_add_val(child, seq, vdata, vlen, complen, NULL, 1);
+    		t5 = get_time_ns();
                 if (ev(err))
                     goto done;
 
@@ -481,6 +494,7 @@ get_values:
                     emitted_seq_pt = seq;
                 else
                     emitted_seq = seq;
+    		t6 = get_time_ns();
             }
         } else {
             /* The only time we ever land here is when the same
@@ -513,6 +527,8 @@ get_values:
         }
     }
 
+    //t6 = get_time_ns();
+
     prev_kobj = curr.kobj;
 
     dbg_dup = false;
@@ -520,6 +536,7 @@ get_values:
     dbg_prev_src = curr.src;
 
     more = get_next_item(bh, w->cw_inputv, &curr, &w->cw_stats, &err);
+    t7 = get_time_ns();
     if (ev(err))
         goto done;
 
@@ -533,9 +550,11 @@ get_values:
             pt_set = false;
         }
     }
+    t8 = get_time_ns();
 
     if (emitted_val) {
         if (pt_spread) {
+    	    get_values_count++;
             int i;
             u32 spillmask = pt_spread | childmask;
 
@@ -560,6 +579,16 @@ get_values:
             w->cw_stats.ms_key_bytes_out += key_obj_len(&prev_kobj);
         }
     }
+
+    t9 = get_time_ns();
+    intv1 += t2-t1;
+    intv2 += t3-t2;
+    intv3 += t4-t3;
+    intv4 += t5-t4;
+    intv5 += t6-t5;
+    intv6 += t7-t6;
+    intv7 += t8-t7;
+    intv8 += t9-t8;
 
     if (more)
         goto new_key;
@@ -594,6 +623,28 @@ done:
     if (tprog)
         w->cw_progress(w);
 
+    /*
+    printf("[%s] %ld %ld %ld %ld %ld %ld %ld \n", __func__, 
+		    (t2 - t1)/1000000, 
+		    (t3 - t2)/1000000,
+		    (t4 - t3)/1000000,
+		    (t5 - t4)/1000000,
+		    (t6 - t5)/1000000,
+		    (t7 - t6)/1000000,
+		    (t8 - t7)/1000000);
+		    */
+    printf("[%s] %d %d %ld %ld %ld %ld %ld %ld %ld %ld\n", 
+		    __func__,
+		    new_key_count,
+		    get_values_count,
+		    intv1, 
+		    intv2, 
+		    intv3,
+		    intv4,
+		    intv5,
+		    intv6,
+		    intv7,
+		    intv8);
     return err;
 }
 

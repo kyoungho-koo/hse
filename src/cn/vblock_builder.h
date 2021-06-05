@@ -64,7 +64,8 @@ vbb_add_entry(
     uint                   vlen,
     u64 *                  vbidout,
     uint *                 vbidxout,
-    uint *                 vboffout);
+    uint *                 vboffout,
+    uint		   debug);
 
 /* MTF_MOCK */
 merr_t

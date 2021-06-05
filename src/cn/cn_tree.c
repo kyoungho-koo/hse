@@ -1483,6 +1483,16 @@ cn_tree_lookup(
     while (node) {
         bool yield = false;
 
+    	if (debug) {
+		printf("[%s] (%d,%d) kvsets: %d kblks: %d vblks: %d\n", 
+				__func__,
+				node->tn_loc.node_level,
+				node->tn_loc.node_offset,
+				node->tn_ns.ns_kst.kst_kvsets,
+				node->tn_ns.ns_kst.kst_kblks,
+				node->tn_ns.ns_kst.kst_vblks);
+	}
+
         /* Search kvsets from newest to oldest (head to tail).
          * If an error occurs or a key is found, return immediately.
          */
@@ -3420,8 +3430,24 @@ cn_comp_compact(struct cn_compaction_work *w)
     bool   skip_commit = false;
     merr_t err;
     u32    i;
+    u32    j;
     u64    ns;
+    u64    start_ns;
     u64    ingestsz;
+    char namebuf[16];
+    pthread_t tid;
+    tid = pthread_self();
+    struct timeval timestamp;
+    struct timeval startstamp;
+    struct timeval beforstamp;
+//    static u64 recent_spc_lat[8];
+//    static u64 spc_lat_count = 0;
+    static u64 recent_spc_lat;
+    static u32    delay = 0;
+//    u64    delay[4] = {1000000, 2000000, 3000000, 4000000};
+    //u64    delay[3] = {1500000, 3000000, 4500000};
+
+    pthread_getname_np(tid, namebuf, sizeof(namebuf));
 
     if (ev(w->cw_err))
         return;
@@ -3431,6 +3457,43 @@ cn_comp_compact(struct cn_compaction_work *w)
 
     perfc_inc(w->cw_pc, PERFC_BA_CNCOMP_START);
 
+    gettimeofday(&beforstamp, NULL);
+    if (w->cw_action == CN_ACTION_SPILL && recent_spc_lat > 10000000000) {
+	delay++;
+
+	//usleep(delay * 10000000);
+	usleep(delay *0);
+	/*
+//	usleep(delay[delay_count++ % 3]);
+	//usleep(delay[delay_count++ % 4]);
+	j = 0;
+	delay = 0;
+    	for (i = 0; i < 7; i++) {
+	    int latency = recent_spc_lat[(spc_lat_count + i) % 8];
+	    if (latency) {
+		j ++;
+		delay += latency;
+	    }
+	}
+	if (j) {
+	    printf("delay\n");
+	    delay = (u64) delay / j;
+	    delay = recent_spc_lat[spc_lat_count -1] - delay;
+
+
+	    if (delay > 0) {
+	        struct timespec timespec;
+
+	        timespec.tv_sec = delay / NSEC_PER_SEC;
+	        timespec.tv_nsec = delay % NSEC_PER_SEC;
+	        nanosleep(&timespec, 0);
+	    }
+	}
+	*/
+    } else if (w->cw_action == CN_ACTION_SPILL) {
+	    delay = 0;
+    }
+    
     cn_setname(w->cw_threadname);
 
     w->cw_t1_qtime = get_time_ns();
@@ -3457,47 +3520,72 @@ cn_comp_compact(struct cn_compaction_work *w)
      * and kv-compaction. */
     w->cw_keep_vblks = kcompact;
 
-    ns = get_time_ns();
-    if (kcompact)
+
+    start_ns = get_time_ns();
+    gettimeofday(&startstamp, NULL);
+    if (kcompact) {
         err = cn_kcompact(w);
-    else
+    } else {
         err = cn_spill(w);
+    }
 
     /* [HSE_REVISIT] The combination of key_bytes_out and val_bytes_out
      * seems more than what is written to the media for kcompaction.
      * Discarding the kcompation for bandwidth calculation for now.
      */
     if (kcompact) {
-        //ns = 0;
-        ns = get_time_ns() - ns;
+        // ns = 0;
+        ns = get_time_ns() - start_ns;
         ingestsz = 0;
-    } else {
-        ns = get_time_ns() - ns;
+    } else if (w->cw_action == CN_ACTION_COMPACT_KV) {
+        ns = get_time_ns() - start_ns;
         ingestsz = w->cw_stats.ms_key_bytes_out;
         ingestsz += w->cw_stats.ms_val_bytes_out;
+    } else {
+        ns = get_time_ns() - start_ns;
+        ingestsz = w->cw_stats.ms_key_bytes_out;
+        ingestsz += w->cw_stats.ms_val_bytes_out;
+	//recent_spc_lat[spc_lat_count++ % 8] = ns;
+	recent_spc_lat = ns;
     }
 
-    printf("[%s] (%s) <%ld> latency(ms): %ld,  keys_in(10^3): %ld, keys_out(10^3): %ld, "
-		   "key_Mbytes_in: %ld , key_Mbytes_out: %ld, val_Mbytes_out: %ld\n", 
-		    __func__, 
-		    w->cw_threadname, 
-		    pthread_self(),
-		    ns/1000000,
-		    w->cw_stats.ms_keys_in /1000,
-		    w->cw_stats.ms_keys_out / 1000,
-		    w->cw_stats.ms_key_bytes_in >> 20,
-		    w->cw_stats.ms_key_bytes_out >> 20,
-		    w->cw_stats.ms_val_bytes_out >> 20);
 
     if (merr_errno(err) == ESHUTDOWN && atomic_read(w->cw_cancel_request))
         w->cw_canceled = true;
 
     /* defer status check until *after* cleanup */
-    for (i = 0; i < w->cw_kvset_cnt; i++)
-        if (w->cw_inputv[i])
+    j=0;
+    for (i = 0; i < w->cw_kvset_cnt; i++) {
+        if (w->cw_inputv[i]) {
+	    j++;
             w->cw_inputv[i]->kvi_ops->kvi_release(w->cw_inputv[i]);
+	}
+    }
     free(w->cw_inputv);
     free(w->cw_drop_tombv);
+
+    gettimeofday(&timestamp, NULL);
+    printf("[%s]  (%s) -> (%s) <%ld> timestamp: %ld.%06ld latency(ms): %ld  keys_in(10^3): %ld keys_out(10^3): %ld "
+		   "key_Mbytes_in: %ld key_Mbytes_out: %ld val_Mbytes_out: %ld cw_inputv: %u "
+		   " cw_outc: %u timestamp_start: %ld.%06ld beforstamp_start: %ld.%06ld\n", 
+		    __func__, 
+		    namebuf,
+		    w->cw_threadname, 
+		    pthread_self(),
+		    timestamp.tv_sec,
+		    timestamp.tv_usec,
+		    ns/1000000,
+		    w->cw_stats.ms_keys_in /1000,
+		    w->cw_stats.ms_keys_out / 1000,
+		    w->cw_stats.ms_key_bytes_in >> 20,
+		    w->cw_stats.ms_key_bytes_out >> 20,
+		    w->cw_stats.ms_val_bytes_out >> 20,
+		    j,
+		    w->cw_outc,
+		    startstamp.tv_sec,
+		    startstamp.tv_usec,
+		    beforstamp.tv_sec,
+		    beforstamp.tv_usec);
     if (ev(err)) {
         if (!w->cw_canceled)
             kvdb_health_error(hp, err);

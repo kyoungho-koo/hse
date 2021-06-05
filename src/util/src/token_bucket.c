@@ -50,6 +50,17 @@ tbkt_request(struct tbkt *self, u64 request)
     u64 burst, rate, balance, deficit;
     u64 refill, refill_max;
 
+    /*
+    printf("[%s] %ld %ld %ld %ld %ld %ld\n", 
+		    __func__,
+		    self->tb_burst,
+		    self->tb_balance,
+		    self->tb_burst,
+		    request,
+		    self->tb_rate,
+		    self->tb_dt_max,
+		    );
+    */
     if (self->tb_rate == 0)
         return 0;
 

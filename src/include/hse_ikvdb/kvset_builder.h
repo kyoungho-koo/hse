@@ -82,7 +82,8 @@ kvset_builder_add_val(
     const void *            vdata,
     uint                    vlen,
     uint                    complen,
-    struct c1_bonsai_vbldr *vbldr);
+    struct c1_bonsai_vbldr *vbldr,
+    uint		    debug);
 
 /* MTF_MOCK */
 merr_t

@@ -687,6 +687,7 @@ cn_ingestv(
     uint   ext_vblk_count = 0;
     bool   log_ingest = false;
     u64    dgen = 0;
+    struct timeval timestamp;
 
     /* Ingestc can be large (256), and is typically sparse.
      * Remember the first and last index so we don't have
@@ -812,13 +813,21 @@ cn_ingestv(
             HSE_SLOG_FIELD("vwlen", "%lu", (ulong)kst.kst_vwlen),
             HSE_SLOG_FIELD("vulen", "%lu", (ulong)kst.kst_vulen),
             HSE_SLOG_END);
-	printf("[%s] ingestid: %lu kvsets: %lu keys: %lu kblks: %lu vblks: %lu\n", 
+    	gettimeofday(&timestamp, NULL);
+	printf("[%s] timestamp: %ld.%06ld ingestid: %lu kvsets: %lu keys: %lu kblks: %lu vblks: %lu kalen: %lu kwlen: %lu valen: %lu vwlen %lu vulen %lu\n", 
 			__func__,
+			timestamp.tv_sec,
+			timestamp.tv_usec,
 			(ulong)ingestid,
 			(ulong)kst.kst_kvsets,
 			(ulong)kst.kst_keys,
 			(ulong)kst.kst_kblks,
-			(ulong)kst.kst_vblks);
+			(ulong)kst.kst_vblks,
+		        (ulong)kst.kst_kalen,
+		        (ulong)kst.kst_kwlen,
+		        (ulong)kst.kst_valen,
+		        (ulong)kst.kst_vwlen,
+		        (ulong)kst.kst_vulen);
     }
 
 done:

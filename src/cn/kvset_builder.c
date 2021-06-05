@@ -182,11 +182,19 @@ kvset_builder_add_val(
     const void             *vdata,
     uint                    vlen,
     uint                    complen,
-    struct c1_bonsai_vbldr *c1)
+    struct c1_bonsai_vbldr *c1,
+    uint 		debug)
 {
     merr_t           err;
     u64              seqno_prev;
     struct kmd_info *ki = vdata == HSE_CORE_TOMB_PFX ? &self->sec : &self->main;
+
+    static int count;
+    static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
+    u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0;
+
+    if (debug)
+	t1 = get_time_ns();
 
     if (ev(reserve_kmd(ki)))
         return merr(ENOMEM);
@@ -219,7 +227,6 @@ kvset_builder_add_val(
             c1, &vbidx, &vboff, &vbid);
 
         if (c1value) {
-
             /* value already in a c1 vlbock.
              * c1 compressed values not currently supported.
              */
@@ -271,9 +278,13 @@ kvset_builder_add_val(
             }
 
           add_entry:
+            if (debug)
+    	        t2 = get_time_ns();
             /* vblock builder needs on-media length */
             omlen = complen ? complen : vlen;
-            err = vbb_add_entry(self->vbb, vdata, omlen, &vbid, &vbidx, &vboff);
+            err = vbb_add_entry(self->vbb, vdata, omlen, &vbid, &vbidx, &vboff, 1);
+            if (debug)
+    	        t3 = get_time_ns();
             if (ev(err))
                 return err;
 
@@ -285,6 +296,8 @@ kvset_builder_add_val(
         else
             kmd_add_val(self->main.kmd, &self->main.kmd_used, seq, vbidx, vboff, vlen);
 
+        if (debug)
+    	    t4 = get_time_ns();
         /* stats (and space amp) use on-media length */
         self->vused += omlen;
         self->key_stats.tot_vlen += omlen;
@@ -307,6 +320,18 @@ kvset_builder_add_val(
     if (seq > seqno_prev)
         return merr(ev(EINVAL));
 
+    if (debug) {
+	count ++;
+    	t5 = get_time_ns();
+    	intv1 += t2-t1;
+    	intv2 += t3-t2;
+    	intv3 += t4-t3;
+    	intv4 += t5-t4;
+	if (count > 1000000) {
+	    printf("[%s] %d %ld %ld %ld %ld\n", __func__, count, intv1, intv2 ,intv3, intv4);
+	    count = intv1 = intv2 = intv3 = intv4 = 0;
+	}
+    }
     return 0;
 }
 

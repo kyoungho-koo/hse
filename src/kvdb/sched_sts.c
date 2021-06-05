@@ -255,6 +255,9 @@ add_worker(struct sts *self, uint qnum)
     else
         snprintf(w->wname, sizeof(w->wname), "sts_w%u_q%u", wnum, qnum);
 
+    printf("[%s] wname: %s\n", 
+		__func__,
+		w->wname);
     rc = pthread_create(&tid, NULL, sts_worker_main, w);
     if (ev(rc)) {
         free(w);
@@ -672,6 +675,7 @@ sts_worker_main(void *rock)
 
     perfc_dec(&self->qv[w->wqnum].qpc, PERFC_BA_STS_WORKERS);
 
+    printf("[%s] sts/worker %s exit \n", __func__, w->wname);
     if (csched_rp_dbg_worker(self->rp))
         hse_log(HSE_NOTICE "sts/worker %s exit", w->wname);
     atomic_dec(&self->ready_workers);

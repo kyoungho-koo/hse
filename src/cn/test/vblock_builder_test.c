@@ -517,7 +517,7 @@ add_entry(struct mtf_test_info *lcl_ti, struct vblock_builder *vbb, uint vlen, i
      */
     unsigned base = (7 * salt++) % (WORKBUF_SIZE - vlen - 1);
 
-    err = vbb_add_entry(vbb, workbuf + base, vlen, &vbid, &vbidx, &vboff);
+    err = vbb_add_entry(vbb, workbuf + base, vlen, &vbid, &vbidx, &vboff, 0);
     if (!err) {
         ASSERT_TRUE_RET(vboff != -1, -1);
         ASSERT_TRUE_RET(vbidx != -1, -1);

@@ -397,7 +397,7 @@ c0sk_builder_add(
         }
 
         err = kvset_builder_add_val(
-            bldr, seqno, val->bv_vlen ? val->bv_value : val->bv_valuep, val->bv_vlen, 0, vbb);
+            bldr, seqno, val->bv_vlen ? val->bv_value : val->bv_valuep, val->bv_vlen, 0, vbb, 0);
         if (err)
             return ev(err);
     }
@@ -644,6 +644,8 @@ c0sk_ingest_worker(struct work_struct *work)
     bool                   do_cn_ingest = false;
     bool                   ext_bldr = false;
     u64                    ingestid;
+    struct timeval         starttimestamp;
+    struct timeval         endtimestamp;
 
     ingest = container_of(work, struct c0_ingest_work, c0iw_work);
 
@@ -667,8 +669,10 @@ c0sk_ingest_worker(struct work_struct *work)
 
     assert(c0sk->c0sk_kvdb_health);
 
-    if (debug)
+    if (debug) {
+    	gettimeofday(&starttimestamp, NULL);
         ingest->t0 = get_time_ns();
+    }
 
     c0kvms_priv_wait(kvms);
 
@@ -945,17 +949,21 @@ exit_err:
 
         ingest->gen = c0kvms_gen_read(kvms);
         ingest->gencur = c0kvms_gen_current(kvms);
-	printf("[%s] (%s) <%ld> %ld %ld(%ld %ld) %ld %ld %ld\n", 
+    	gettimeofday(&endtimestamp, NULL);
+	printf("[%s] (%s) <%ld> %ld.%06ld %ld.%06ld %ld %ld %ld %ld %ld\n", 
 			__func__,
 			namebuf,
 			tid,
+		    	starttimestamp.tv_sec,
+		    	starttimestamp.tv_usec,
+		    	endtimestamp.tv_sec,
+		    	endtimestamp.tv_usec,
 			(ingest->t3 - ingest->t0)/1000000,
 			(ingest->t4 - ingest->t3)/1000000,
-			(ingest->t3b - ingest->t3)/1000000,
-			(ingest->t4 - ingest->t3b)/1000000,
 			(ingest->t5 - ingest->t4)/1000000,
 			(ingest->t6 - ingest->t5)/1000000,
 			(ingest->t7 - ingest->t6)/1000000);
+//	usleep(500000);
     }
 
     c0sk_ingest_bldr_put(ingest, c0_vlen, c1_vlen, ext_bldr);
@@ -1783,6 +1791,7 @@ c0sk_putdel(
             rcu_read_unlock();
             return merr(EINVAL);
         }
+
 
         if (ev(c0kvms_should_ingest(dst, coalescesz)) && atomic_read(&self->c0sk_replaying) == 0) {
             err = merr(ENOMEM);

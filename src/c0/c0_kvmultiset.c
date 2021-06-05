@@ -401,10 +401,20 @@ c0kvms_should_ingest(struct c0_kvmultiset *handle, u64 coalescesz)
     n = width / 3;
     r %= (width - n);
 
+
     if (likely(coalescesz)) {
         while (n-- > 0)
             sz += c0kvs_used(self->c0ms_sets[r++]);
 
+	if ((3 * sz) > (coalescesz << 20)) {
+		printf("[%s] width: %d n: %d r: %u coalescesz: %lu sz: %lu\n",
+			    __func__,
+			    width,
+			    n,
+			    r,
+			    coalescesz,
+			    (sz >> 20));
+	}
         return ((3 * sz) > (coalescesz << 20));
     }
 
