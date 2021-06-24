@@ -384,8 +384,14 @@ c0kvms_should_ingest(struct c0_kvmultiset *handle, u64 coalescesz)
     uint                       r;
     u64                        sz = 0;
 
-    if (atomic_read(&self->c0ms_ingesting) > 0)
+    if (atomic_read(&self->c0ms_ingesting) > 0) {
+#ifdef DEBUG_C0KVMS_SHOULD_INGEST
+	    printf("[%s] c0ms_ingesting %d\n",
+			    __func__,
+			    atomic_read(&self->c0ms_ingesting));
+#endif
         return true;
+    }
 
     r = get_cycles() >> 1;
 
@@ -407,6 +413,7 @@ c0kvms_should_ingest(struct c0_kvmultiset *handle, u64 coalescesz)
             sz += c0kvs_used(self->c0ms_sets[r++]);
 
 	if ((3 * sz) > (coalescesz << 20)) {
+#ifdef DEBUG_C0KVMS_SHOULD_INGEST
 		printf("[%s] width: %d n: %d r: %u coalescesz: %lu sz: %lu\n",
 			    __func__,
 			    width,
@@ -414,6 +421,7 @@ c0kvms_should_ingest(struct c0_kvmultiset *handle, u64 coalescesz)
 			    r,
 			    coalescesz,
 			    (sz >> 20));
+#endif
 	}
         return ((3 * sz) > (coalescesz << 20));
     }
@@ -423,6 +431,11 @@ c0kvms_should_ingest(struct c0_kvmultiset *handle, u64 coalescesz)
     while (n-- > 0 && cnt > 0)
         cnt -= c0kvs_get_element_count(self->c0ms_sets[r++]);
 
+#ifdef DEBUG_C0KVMS_SHOULD_INGEST
+    printf("[%s] cnt %d\n",
+		    __func__,
+		    cnt);
+#endif
     return (cnt < 0);
 }
 
@@ -937,6 +950,10 @@ c0kvms_create(
     if (sz < alloc_sz)
         sz = alloc_sz;
 
+#ifdef DEBUG_C0KVMS_CREATE
+    printf("[%s] num_sets %d sz: %ld priv_sz: %ld iw_sz: %ld \n",
+		    __func__, num_sets, sz, priv_sz, iw_sz);
+#endif
     for (i = 0; i < num_sets; ++i) {
         err = c0kvs_create(sz, kvdb_seq, &kvms->c0ms_seqno, tracked, &kvms->c0ms_sets[i]);
         if (ev(err)) {

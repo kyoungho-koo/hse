@@ -121,6 +121,8 @@ _vblock_start(struct vblock_builder *bld)
     return 0;
 }
 
+#define DEBUG__VBLOCK_WRITE
+#define IO_THROTTLING
 static merr_t
 _vblock_write(struct vblock_builder *bld, uint debug)
 {
@@ -129,12 +131,27 @@ _vblock_write(struct vblock_builder *bld, uint debug)
     bool                   ingest;
     struct cn_merge_stats *stats = bld->mstats;
     u64                    tstart;
-   // static u64   trigger;
-    /*
-    static int count;
-    static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
-    u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0 , t5 = 0;
-    */
+#ifdef DEBUG__VBLOCK_WRITE
+    static u32 ing_mblw_cnt = 0;
+    static u32 comp_mblw_cnt = 0;
+    static u64 ing_mblw_intv = 0;
+    static u64 comp_mblw_intv = 0;
+    static u64 ing_mblw_len = 0;
+    static u64 comp_mblw_len = 0;
+
+    //static u64 comp_delay = 0;
+    //
+
+    // IO throttling 
+#ifdef IO_THROTTLING
+    static int ideal_rate = 0;
+//    static int gb_io_cnt = 0;
+    static u64 ing_delay = 0;
+    static u64 comp_delay = 0;
+#endif
+    u64 tmp = 0;
+
+#endif
 
     /*
     if (debug)
@@ -145,30 +162,26 @@ _vblock_write(struct vblock_builder *bld, uint debug)
     iov.iov_base = bld->wbuf;
     iov.iov_len = bld->wbuf_len;
 
-    /*
-    if (debug)
-        t2 = get_time_ns();
-    if (debug) {
-        trigger = debug/10;
-	tbkt_delay (trigger);
-	printf("[%s] tbkt_delay %ld\n", __func__, trigger);
+#ifdef IO_THROTTLING
+    if (ingest) {
+    	tbkt_delay (ing_delay);
+    } else {
+	tbkt_delay (comp_delay);
     }
-	*/
+#endif
+
     if (!ingest) {
         struct tbkt *tb = cn_get_tbkt_maint(bld->cn);
 
         if (tb) {
 	    u64 delay = tbkt_request(tb, iov.iov_len);
             tbkt_delay(delay);
-	    if (delay)
-	    	printf("[%s] tbkt_delay %ld\n", __func__, delay);
 	}
     }
 
-    /*
-    if (debug)
-	t3 = get_time_ns();
-    */
+#ifdef DEBUG__VBLOCK_WRITE
+    tmp = get_time_ns();
+#endif
 
     /* Function mblk_blow_chunks(), which is used in the kblock builder,
      * is not needed here because our write buffer is already
@@ -179,9 +192,17 @@ _vblock_write(struct vblock_builder *bld, uint debug)
 
     err = mpool_mblock_write(bld->ds, bld->blkid, &iov, 1);
 
-    /*
-    t4 = get_time_ns();
-    */
+#ifdef DEBUG__VBLOCK_WRITE
+    if (ingest) {
+	ing_mblw_cnt++;
+        ing_mblw_intv += (get_time_ns() - tmp);
+	ing_mblw_len += iov.iov_len;
+    } else {
+	comp_mblw_cnt++;
+        comp_mblw_intv += (get_time_ns() - tmp);
+	comp_mblw_len += iov.iov_len;
+    }
+#endif
     if (stats)
         count_ops(&stats->ms_vblk_write, 1, iov.iov_len, get_time_ns() - tstart);
 
@@ -194,20 +215,68 @@ _vblock_write(struct vblock_builder *bld, uint debug)
 
     perfc_inc(bld->pc, PERFC_RA_CNCOMP_WREQS);
     perfc_add(bld->pc, PERFC_RA_CNCOMP_WBYTES, bld->wbuf_len);
-    /*
-    if (debug) {
-	    t5 = get_time_ns();
-	    count ++;
-	    if (count > 1000) {
-		    intv1 += t2-t1;
-		    intv2 += t3-t2;
-		    intv3 += t4-t3;
-		    intv4 += t5-t4;
-		    printf("[%s] %d %ld %ld %ld %ld\n", __func__, count, intv1, intv2, intv3, intv4);
-		    count = intv1 = intv2 = intv3 = intv4 = 0;
+#ifdef DEBUG__VBLOCK_WRITE
+    if (ing_mblw_cnt + comp_mblw_cnt >= 1000) {
+#ifdef IO_THROTTLING
+	    ing_delay = 0;
+	    comp_delay = 0;
+
+	    if (ing_mblw_cnt > 100) {
+		int expr_rate;
+		/*
+		int i;
+		u64 ing = 0;
+		u64 comp = 0;
+		int tmp_ideal_rate;
+		for (i = 0; i < 10; i++) {
+		    ing += avg_ing_lat[i];
+		    comp += avg_comp_lat[i];
+		}
+
+
+		avg_ing_lat = ing_mblw_intv / (ing_mblw_cnt + 1);
+		avg_comp_lat = comp_mblw_intv / (comp_mblw_cnt + 1);
+		*/
+
+                expr_rate = (int)(comp_mblw_intv / (comp_mblw_cnt+1) * (ing_mblw_cnt+1) * 100 /(ing_mblw_intv));
+
+		ing_delay = 0;
+		if (ideal_rate == 0 || expr_rate < ideal_rate)
+		    ideal_rate = (expr_rate > 100 )? expr_rate : ideal_rate + 1;
+		else {
+		    ing_delay = (expr_rate - ideal_rate) * ing_mblw_intv / (ideal_rate) / (ing_mblw_cnt + 1);
+		}
+		// DISABLE
+		//ing_delay = 0;
+
+		
+		/*
+		if (expr_rate - ideal_rate)
+		if (11 * comp < 10 * avg_comp_lat[idx]) {
+		    u64 total_delay = avg_comp_lat[idx] - comp;
+		    ing_delay = total_delay * ing_mblw_cnt / 1000;
+		    //comp_delay = total_delay - ing_delay;
+		}
+	        printf("[%s] comp: %ld avg_comp_lat: %ld\n", __func__, comp, avg_comp_lat[idx]);
+		*/
 	    }
+#endif
+
+
+	    printf("[%s] ing_mblw_cnt: %d comp_mblw_cnt: %d "
+		   "ing_mblw_intv(us): %ld comp_mblw_intv(us): %ld "
+		   "ing_mblw_len: %ld comp_mblw_len: %ld ing_delay: %ld ideal_rate: %d\n",
+		   __func__, ing_mblw_cnt, comp_mblw_cnt, 
+		   ing_mblw_intv, comp_mblw_intv, 
+		   ing_mblw_len, comp_mblw_len, ing_delay, ideal_rate); 
+	    // ing_delay);
+		  // " ing_delay: %ld\n", 
+
+	    // koo: To prevent "divide by zero", we divide total interval by count + 1;
+	    ing_mblw_cnt =  comp_mblw_cnt = ing_mblw_intv 
+		    = comp_mblw_intv = ing_mblw_len = comp_mblw_len = 0;
     }
-    */
+#endif
 
     return 0;
 }
@@ -323,11 +392,13 @@ vbb_add_entry(
 {
     merr_t err;
     uint   voff, space, bytes;
+#ifdef DEBUG_VBB_ADD_ENTRY
     static int count;
     static u64 loop, write;
     static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
     u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0 , t5 = 0;
     static u64 trigger = 0;
+#endif
 
     assert(!bld->destruct);
 
@@ -353,9 +424,11 @@ vbb_add_entry(
     voff = 0;
 
     while (voff < vlen) {
+#ifdef DEBUG_VBB_ADD_ENTRY
 	loop ++;
     	if (debug)
 	    t1 = get_time_ns();
+#endif
 
         assert(bld->wbuf_off < bld->wbuf_len);
 
@@ -365,8 +438,10 @@ vbb_add_entry(
         if (bytes > space)
             bytes = space;
 
+#ifdef DEBUG_VBB_ADD_ENTRY
 	if (debug)
 	    t2 = get_time_ns();
+#endif
         memcpy(bld->wbuf + bld->wbuf_off, vdata + voff, bytes);
 
         bld->wbuf_off += bytes;
@@ -374,24 +449,30 @@ vbb_add_entry(
 
         /* Issue write if buffer is full. */
         if (bld->wbuf_off == bld->wbuf_len) {
+#ifdef DEBUG_VBB_ADD_ENTRY
 	    write ++;
             if (debug) {
 	        t4 = get_time_ns();
 	    }
-            err = _vblock_write(bld, trigger);
+#endif
+            err = _vblock_write(bld, debug);
+#ifdef DEBUG_VBB_ADD_ENTRY
 	    trigger = 0;
             if (debug) {
 	        t5 = get_time_ns();
 		intv4 += t5 - t4;
 	    }
+#endif
             if (ev(err))
                 return err;
         }
+#ifdef DEBUG_VBB_ADD_ENTRY
         if (debug) {
 	    t3 = get_time_ns();
     	    intv1 += t2-t1;
     	    intv2 += t3-t2;
 	}
+#endif
     }
 
     assert(bld->wbuf_off < bld->wbuf_len);
@@ -403,6 +484,7 @@ vbb_add_entry(
     bld->vblk_off += vlen;
     bld->vsize += vlen;
 
+#ifdef DEBUG_VBB_ADD_ENTRY
     if (debug) {
 	count ++;
     	//intv3 += t4-t3;
@@ -414,6 +496,7 @@ vbb_add_entry(
 	    count = intv1 = intv2 = intv3 = intv4 = loop = write = 0;
 	}
     }
+#endif
     return 0;
 }
 

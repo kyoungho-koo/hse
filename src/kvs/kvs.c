@@ -552,6 +552,7 @@ ikvs_put(
     return err;
 }
 
+#define DEBUG_IKVS_GET
 merr_t
 ikvs_get(
     struct ikvs *           kvs,
@@ -568,6 +569,16 @@ ikvs_get(
     size_t            hashlen;
     u64               tstart;
     merr_t            err;
+#ifdef DEBUG_IKVS_GET
+    static struct timeval prevtime;
+    struct timeval curtime;
+    static u64 count = 0;
+    static u64 cn_count = 0;
+    static u64 total_ikvs_get_intv = 0;
+    u64 t0 = get_time_ns();
+
+    count++;
+#endif
 
     tstart = perfc_lat_start(pkvsl_pc);
 
@@ -588,11 +599,31 @@ ikvs_get(
                 return err;
         }
 
+#ifdef DEBUG_IKVS_GET
+	cn_count ++;
+#endif
         err = cn_get(cn, kt, seqno, res, vbuf);
     }
 
     perfc_lat_record(pkvsl_pc, PERFC_LT_PKVSL_KVS_GET, tstart);
 
+#ifdef DEBUG_IKVS_GET
+    total_ikvs_get_intv += (get_time_ns() - t0)/1000;
+
+    gettimeofday(&curtime, NULL);
+#define convert_usec(time) (time.tv_sec * 1000000 + time.tv_usec)
+    if ((prevtime.tv_sec == 0 && prevtime.tv_usec == 0)|| convert_usec(curtime) - convert_usec(prevtime) >= 1000000) {
+	prevtime = curtime;
+	printf("[%s] %ld.%06ld count: %ld cn_count: %ld total_ikvset_get_intv: %ld\n", 
+			__func__,
+			curtime.tv_sec,
+			curtime.tv_usec,
+			count,
+			cn_count,
+			total_ikvs_get_intv);
+    	total_ikvs_get_intv = count = cn_count = 0;
+    }
+#endif
     return err;
 }
 

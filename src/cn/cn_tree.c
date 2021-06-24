@@ -1404,6 +1404,7 @@ khashmap2child(struct cn_khashmap *khashmap, u64 hash, uint shift, uint level)
  *  [2]: A full key hash is replaced with a hash over (keylen - sfx_len) bytes
  *       of the key.
  */
+#define DEBUG_CN_TREE_LOOKUP
 merr_t
 cn_tree_lookup(
     struct cn_tree *     tree,
@@ -1429,9 +1430,21 @@ cn_tree_lookup(
     u16                      pc_lvl, pc_lvl_start, pc_depth;
     bool                     pfx_hashing, first;
     void *                   wbti;
-    u64                      t0, t1, t2, t3;
-    static int               count = 0;
-    bool		     debug = false;
+#ifdef DEBUG_CN_TREE_LOOKUP
+    static struct timeval prevtime;
+    struct timeval curtime;
+    static u64 count = 0;
+    static u64 total_nkvset = 0;
+    static u64 total_depth = 0;
+    static u64 total_cn_lookup_intv = 0;
+    u64 t0 = get_time_ns();
+
+    u32 rt_kst_kvsets;
+    u32 rt_kst_kblks;
+    u32 rt_kst_vblks;
+
+    count++;
+#endif
 
     __builtin_prefetch(tree);
 
@@ -1443,10 +1456,6 @@ cn_tree_lookup(
     pc_lvl_start = 0;
 
 
-    if (++count % 10000 == 0) {
-	debug = true;
-    	t0 = get_time_ns();
-    }
     pc_start = perfc_lat_start(pc);
     if (pc_start > 0) {
         if (perfc_ison(pc, PERFC_LT_CNGET_GET_L0)) {
@@ -1477,12 +1486,17 @@ cn_tree_lookup(
     pfx_hashing = kt->kt_len > tree->ct_pfx_len && node->tn_pfx_spill;
     first = true;
 
+#ifdef DEBUG_CN_TREE_LOOKUP
+    rt_kst_kvsets = node->tn_ns.ns_kst.kst_kvsets;
+    rt_kst_kblks = node->tn_ns.ns_kst.kst_kblks;
+    rt_kst_vblks = node->tn_ns.ns_kst.kst_vblks;
+#endif
     rmlock_rlock(&tree->ct_lock, &lock);
-    if (debug)
-    	t1 = get_time_ns();
     while (node) {
         bool yield = false;
 
+#ifdef DEBUG_CN_TREE_LOOKUP
+	/*
     	if (debug) {
 		printf("[%s] (%d,%d) kvsets: %d kblks: %d vblks: %d\n", 
 				__func__,
@@ -1492,6 +1506,8 @@ cn_tree_lookup(
 				node->tn_ns.ns_kst.kst_kblks,
 				node->tn_ns.ns_kst.kst_vblks);
 	}
+	*/
+#endif
 
         /* Search kvsets from newest to oldest (head to tail).
          * If an error occurs or a key is found, return immediately.
@@ -1570,8 +1586,6 @@ cn_tree_lookup(
     rmlock_runlock(lock);
 
 done:
-    if (debug)
-    	t2 = get_time_ns();
     if (pc && !wbti) {
         /* latencies first - close in time */
         perfc_lat_record(pc, PERFC_LT_CNGET_GET, pc_start);
@@ -1598,16 +1612,29 @@ done:
         if (pc)
             perfc_lat_record(pc, PERFC_LT_CNGET_PROBEPFX, pc_start);
     }
-    if (debug) {
-    	t3 = get_time_ns();
-	printf("[%s] %ld %ld %ld , pc_depth: %d , pc_nkvset: %d\n", 
+#ifdef DEBUG_CN_TREE_LOOKUP
+    total_nkvset += pc_nkvset;
+    total_depth += pc_depth;
+    total_cn_lookup_intv += (get_time_ns() - t0)/1000;
+
+    gettimeofday(&curtime, NULL);
+#define convert_usec(time) (time.tv_sec * 1000000 + time.tv_usec)
+    if ((prevtime.tv_sec == 0 && prevtime.tv_usec == 0) || convert_usec(curtime) - convert_usec(prevtime) >= 1000000) {
+	prevtime = curtime;
+	printf("[%s] %ld.%06ld count: %ld total_depth: %ld total_nkvset: %ld cn_lookup_intv: %ld rt_kst_kvsets: %d rt_kst_kblks: %d rt_kst_vblks: %d\n", 
 			__func__,
-			(t1 - t0)/1000,
-			(t2 - t1)/1000,
-			(t3 - t2)/1000,
-			pc_depth,
-			pc_nkvset);
+			curtime.tv_sec,
+			curtime.tv_usec,
+			count,
+			total_depth,
+			total_nkvset,
+			total_cn_lookup_intv,
+			rt_kst_kvsets,
+			rt_kst_kblks,
+			rt_kst_vblks);
+    	total_nkvset = total_depth = total_cn_lookup_intv = count = 0;
     }
+#endif
 
     return err;
 }

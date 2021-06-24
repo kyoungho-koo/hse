@@ -536,6 +536,7 @@ c0kvs_should_ingest(struct c0_kvset *handle, u32 nvals)
     total = self->c0s_alloc_sz;
     free = c0kvs_avail(handle);
 
+    printf("[%s] free %ld totall %ld\n",__func__, free,total);
     /* If free space is less than 75% of total space, then ingest. This
      * is to guard against pathological cases that could result in
      * frequent ingests.
@@ -671,6 +672,9 @@ c0kvs_create(
     alloc_sz = max_t(size_t, alloc_sz, HSE_C0_CHEAP_SZ_MIN);
     alloc_sz = min_t(size_t, alloc_sz, HSE_C0_CHEAP_SZ_MAX);
 
+#ifdef DEBUG_C0KVS_CREATE
+    printf("[%s] alloc_sz %ld\n",__func__, alloc_sz);
+#endif
     set = c0kvs_ccache_alloc(alloc_sz);
     if (set)
         goto created;
@@ -685,12 +689,17 @@ c0kvs_create(
         return merr(ENOMEM);
     }
 
+
     set->c0s_alloc_sz = alloc_sz;
     set->c0s_cheap = cheap;
     set->c0s_ingesting = &c0kvs_ingesting;
     atomic_set(&set->c0s_finalized, 0);
     mutex_init(&set->c0s_mutex);
     mutex_init(&set->c0s_mlock);
+
+#ifdef DEBUG_C0KVS_CREATE
+    printf("[%s] c0s_alloc_sz %ld\n",__func__, set->c0s_alloc_sz);
+#endif
 
     err = bn_create(cheap, HSE_C0_BNODE_SLAB_SZ, c0kvs_ior_cb, set, &set->c0s_broot);
     if (ev(err)) {
@@ -750,6 +759,8 @@ c0kvs_avail(struct c0_kvset *handle)
 
     used = cheap_used(self->c0s_cheap);
     used = min_t(size_t, self->c0s_alloc_sz, used);
+
+
 
     return self->c0s_alloc_sz - used;
 }
@@ -827,10 +838,21 @@ c0kvs_putdel(
     c0kvs_lock(self);
     avail = c0kvs_avail(&self->c0s_handle);
 
-    if (likely(sz < avail))
+    if (likely(sz < avail)) {
         err = bn_insert_or_replace(self->c0s_broot, skey, sval, tomb);
-    else
+#ifdef DEBUG_C0KVS_PUTDEL
+	if (merr_errno(err) == ENOMEM) {
+	    printf("[%s] 1 self->c0s_alloc_sz: %ld avail: %ld sz: %ld\n", __func__, self->c0s_alloc_sz, avail, sz);
+	}
+#endif
+    } else {
         err = (sz > self->c0s_alloc_sz) ? merr(EFBIG) : merr(ENOMEM);
+#ifdef DEBUG_C0KVS_PUTDEL
+	if (merr_errno(err) == ENOMEM) {
+	    printf("[%s] 2 self->c0s_alloc_sz: %ld avail: %ld sz: %ld\n", __func__, self->c0s_alloc_sz, avail, sz);
+	}
+#endif
+    }
     c0kvs_unlock(self);
 
     /* Caller's putting keys into the active kvms must hold the

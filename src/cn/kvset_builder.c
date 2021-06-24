@@ -189,12 +189,16 @@ kvset_builder_add_val(
     u64              seqno_prev;
     struct kmd_info *ki = vdata == HSE_CORE_TOMB_PFX ? &self->sec : &self->main;
 
+#ifdef DEBUG_KVSET_BUILDER_ADD_VAL
     static int count;
     static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
     u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0;
+#endif
 
+#ifdef DEBUG_KVSET_BUILDER_ADD_VAL
     if (debug)
 	t1 = get_time_ns();
+#endif
 
     if (ev(reserve_kmd(ki)))
         return merr(ENOMEM);
@@ -278,13 +282,17 @@ kvset_builder_add_val(
             }
 
           add_entry:
+#ifdef DEBUG_KVSET_BUILDER_ADD_VAL
             if (debug)
     	        t2 = get_time_ns();
+#endif
             /* vblock builder needs on-media length */
             omlen = complen ? complen : vlen;
-            err = vbb_add_entry(self->vbb, vdata, omlen, &vbid, &vbidx, &vboff, 1);
+            err = vbb_add_entry(self->vbb, vdata, omlen, &vbid, &vbidx, &vboff, debug);
+#ifdef DEBUG_KVSET_BUILDER_ADD_VAL
             if (debug)
     	        t3 = get_time_ns();
+#endif
             if (ev(err))
                 return err;
 
@@ -296,8 +304,10 @@ kvset_builder_add_val(
         else
             kmd_add_val(self->main.kmd, &self->main.kmd_used, seq, vbidx, vboff, vlen);
 
+#ifdef DEBUG_KVSET_BUILDER_ADD_VAL
         if (debug)
     	    t4 = get_time_ns();
+#endif
         /* stats (and space amp) use on-media length */
         self->vused += omlen;
         self->key_stats.tot_vlen += omlen;
@@ -320,6 +330,7 @@ kvset_builder_add_val(
     if (seq > seqno_prev)
         return merr(ev(EINVAL));
 
+#ifdef DEBUG_KVSET_BUILDER_ADD_VAL
     if (debug) {
 	count ++;
     	t5 = get_time_ns();
@@ -332,6 +343,7 @@ kvset_builder_add_val(
 	    count = intv1 = intv2 = intv3 = intv4 = 0;
 	}
     }
+#endif
     return 0;
 }
 

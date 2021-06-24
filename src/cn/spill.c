@@ -228,9 +228,11 @@ kv_spill(struct cn_compaction_work *w)
     bool dbg_dup __maybe_unused;
     int new_key_count = 0;
     int get_values_count = 0;
+#ifdef DEBUG_KV_SPILL
     u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 =  0, t9 = 0;
     //u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0;
     u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0, intv5 = 0, intv6 = 0, intv7 = 0, intv8 = 0 ;
+#endif
 
 
     if (w->cw_prog_interval && w->cw_progress)
@@ -262,7 +264,9 @@ kv_spill(struct cn_compaction_work *w)
 
 new_key:
 //    t3 = get_time_ns();
+#ifdef DEBUG_KV_SPILL
     t1 = get_time_ns();
+#endif
     new_key_count ++;
     pt_spread = 0;
     childmask = 0;
@@ -329,7 +333,9 @@ new_key:
     dbg_nvals_this_key = 0;
     dbg_dup = false;
 
+#ifdef DEBUG_KV_SPILL
     t2 = get_time_ns();
+#endif
 get_values:
 
     while (!bg_val) {
@@ -357,7 +363,9 @@ get_values:
 
         direct = omlen > direct_read_len;
 
+#ifdef DEBUG_KV_SPILL
     	t3 = get_time_ns();
+#endif
         /* [HSE_REVISIT] direct read path allocates buffer. Performing
          * direct reads into the buffer in kvset builder without this
          * is a future opportunity.
@@ -478,12 +486,16 @@ get_values:
                     pt_spread |= (1 << i);
                 }
             } else {
+#ifdef DEBUG_KV_SPILL
     		t4 = get_time_ns();
+#endif
                 if (w->cw_drop_tombv[cnum] && HSE_CORE_IS_TOMB(vdata) && bg_val)
                     continue; /* skip value */
 
                 err = kvset_builder_add_val(child, seq, vdata, vlen, complen, NULL, 1);
+#ifdef DEBUG_KV_SPILL
     		t5 = get_time_ns();
+#endif
                 if (ev(err))
                     goto done;
 
@@ -494,7 +506,9 @@ get_values:
                     emitted_seq_pt = seq;
                 else
                     emitted_seq = seq;
+#ifdef DEBUG_KV_SPILL
     		t6 = get_time_ns();
+#endif
             }
         } else {
             /* The only time we ever land here is when the same
@@ -536,7 +550,9 @@ get_values:
     dbg_prev_src = curr.src;
 
     more = get_next_item(bh, w->cw_inputv, &curr, &w->cw_stats, &err);
+#ifdef DEBUG_KV_SPILL
     t7 = get_time_ns();
+#endif
     if (ev(err))
         goto done;
 
@@ -550,7 +566,9 @@ get_values:
             pt_set = false;
         }
     }
+#ifdef DEBUG_KV_SPILL
     t8 = get_time_ns();
+#endif
 
     if (emitted_val) {
         if (pt_spread) {
@@ -580,6 +598,7 @@ get_values:
         }
     }
 
+#ifdef DEBUG_KV_SPILL
     t9 = get_time_ns();
     intv1 += t2-t1;
     intv2 += t3-t2;
@@ -589,6 +608,7 @@ get_values:
     intv6 += t7-t6;
     intv7 += t8-t7;
     intv8 += t9-t8;
+#endif
 
     if (more)
         goto new_key;
@@ -633,6 +653,7 @@ done:
 		    (t7 - t6)/1000000,
 		    (t8 - t7)/1000000);
 		    */
+#ifdef DEBUG_KV_SPILL
     printf("[%s] %d %d %ld %ld %ld %ld %ld %ld %ld %ld\n", 
 		    __func__,
 		    new_key_count,
@@ -645,6 +666,7 @@ done:
 		    intv6,
 		    intv7,
 		    intv8);
+#endif
     return err;
 }
 

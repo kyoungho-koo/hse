@@ -397,7 +397,7 @@ c0sk_builder_add(
         }
 
         err = kvset_builder_add_val(
-            bldr, seqno, val->bv_vlen ? val->bv_value : val->bv_valuep, val->bv_vlen, 0, vbb, 0);
+            bldr, seqno, val->bv_vlen ? val->bv_value : val->bv_valuep, val->bv_vlen, 0, vbb, 2);
         if (err)
             return ev(err);
     }
@@ -1419,7 +1419,7 @@ errout:
 BullseyeCoverageSaveOff
 
     merr_t
-    c0sk_queue_ingest(struct c0sk_impl *self, struct c0_kvmultiset *old, struct c0_kvmultiset *new)
+    c0sk_queue_ingest(struct c0sk_impl *self, struct c0_kvmultiset *old, struct c0_kvmultiset *new, int debug)
 {
     struct mtx_node *   node;
     struct c0_usage     usage = { 0 };
@@ -1431,6 +1431,7 @@ BullseyeCoverageSaveOff
     uint   conc;
     merr_t err;
     size_t sz;
+
 
 genchk:
     if (c0kvms_gen_read(old) < atomic64_read(&self->c0sk_ingest_gen))
@@ -1495,6 +1496,10 @@ genchk:
     } else {
         c0sk_ingest_tune(self, &usage);
 
+#ifdef DEBUG_C0SK_QUEUE_INGEST
+        printf("[%s] c0sk_ingest_width %d c0sk_cheap_sz: %d\n",
+			__func__, self->c0sk_ingest_width, self->c0sk_cheap_sz);
+#endif
         err = c0kvms_create(
             self->c0sk_ingest_width,
             self->c0sk_cheap_sz,
@@ -1562,7 +1567,7 @@ again:
         c0kvms_ingest_delay_set(old, 0);
     }
 
-    err = c0sk_queue_ingest(self, old, new);
+    err = c0sk_queue_ingest(self, old, new, 1);
 
     c0kvms_putref(old);
 
@@ -1737,7 +1742,7 @@ unlock:
             c0kvms_priv_release(dst);
 
         if (merr_errno(err) == ENOMEM)
-            (void)c0sk_queue_ingest(self, dst, NULL);
+            (void)c0sk_queue_ingest(self, dst, NULL, 2);
 
         c0kvms_putref(dst);
 
@@ -1826,7 +1831,7 @@ c0sk_putdel(
         if (merr_errno(err) != ENOMEM)
             break;
 
-        c0sk_queue_ingest(self, dst, NULL);
+        c0sk_queue_ingest(self, dst, NULL, 3);
         c0kvms_putref(dst);
     }
 

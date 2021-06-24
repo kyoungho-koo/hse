@@ -1233,6 +1233,7 @@ ikvdb_low_mem_adjust(struct ikvdb_impl *self)
     scale = mavail / 8;
     scale = max_t(uint, 1, scale);
 
+    printf("[%s] mavail %ld scale %d\n",__func__, mavail, scale);
     if (rp->c0_heap_cache_sz_max == dflt.c0_heap_cache_sz_max)
         rp->c0_heap_cache_sz_max = min_t(u64, 1024 * 1024 * 128UL * scale, HSE_C0_CCACHE_SZ_MAX);
 

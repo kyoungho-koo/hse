@@ -65,8 +65,14 @@ hse_meminfo(ulong *freep, ulong *availp, uint shift)
                 *freep >>= shift;
                 freep = NULL;
             } else if (availp && 0 == strncmp(line, ma, malen)) {
+#ifdef DEBUG_HSE_MEMINFO
+		int tmp = nmax;
+#endif
                 nmax -= hse_meminfo_cvt(line + malen, availp);
                 *availp >>= shift;
+#ifdef DEBUG_HSE_MEMINFO
+		printf("[%s] nmax %d %d availp %ld\n",__func__, tmp, nmax, *availp);
+#endif
                 availp = NULL;
             }
         }

@@ -568,7 +568,7 @@ c0sk_open(
 
     hse_log(HSE_INFO "c0sk_open c0 ingest thread %d ", tdmax);
 
-    printf("c0sk_open c0 ingest thread %d ", tdmax);
+    printf("c0sk_open c0 ingest thread %d \n", tdmax);
     c0sk->c0sk_wq_ingest = alloc_workqueue("c0sk_ingest", 0, tdmax);
     if (!c0sk->c0sk_wq_ingest) {
         err = merr(ev(ENOMEM));
@@ -578,7 +578,7 @@ c0sk_open(
     tdmax = min_t(u64, kvdb_rp->c0_maint_threads, HSE_C0_MAINT_THREADS_MAX);
     tdmax = max_t(int, tdmax, 1);
 
-    printf("c0sk_open c0 maint thread %d ", tdmax);
+    printf("c0sk_open c0 maint thread %d \n", tdmax);
     c0sk->c0sk_wq_maint = alloc_workqueue("c0sk_maint", 0, tdmax);
     if (!c0sk->c0sk_wq_maint) {
         err = merr(ev(ENOMEM));
@@ -589,6 +589,8 @@ c0sk_open(
     if (kvdb_rp->c0_ingest_width == 0)
         c0sk->c0sk_ingest_width = c0sk->c0sk_ingest_width_max / 2;
 
+    printf("[%s] c0sk_ingest_width %d c0_heap_sz: %ld\n",
+		    __func__, c0sk->c0sk_ingest_width,kvdb_rp->c0_heap_sz);
     err = c0kvms_create(
         c0sk->c0sk_ingest_width,
         kvdb_rp->c0_heap_sz,
