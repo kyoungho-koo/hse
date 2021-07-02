@@ -175,6 +175,7 @@ kvset_builder_add_key(struct kvset_builder *self, const struct key_obj *kobj)
  *  - If @vdata == NULL or @vlen == 0, then a zero-length value is added.
  *  - Otherwise, a non-zero length value is added.
  */
+//#define DEBUG_KVSET_BUILDER_ADD_VAL
 merr_t
 kvset_builder_add_val(
     struct kvset_builder   *self,
@@ -190,9 +191,11 @@ kvset_builder_add_val(
     struct kmd_info *ki = vdata == HSE_CORE_TOMB_PFX ? &self->sec : &self->main;
 
 #ifdef DEBUG_KVSET_BUILDER_ADD_VAL
+    struct timeval startstamp;
     static int count;
     static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
     u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0;
+    gettimeofday(&startstamp, NULL);
 #endif
 
 #ifdef DEBUG_KVSET_BUILDER_ADD_VAL
@@ -331,7 +334,7 @@ kvset_builder_add_val(
         return merr(ev(EINVAL));
 
 #ifdef DEBUG_KVSET_BUILDER_ADD_VAL
-    if (debug) {
+    if (debug && t1 != 0 && t2 != 0 && t3 != 0 && t4 != 0) {
 	count ++;
     	t5 = get_time_ns();
     	intv1 += t2-t1;
@@ -339,7 +342,15 @@ kvset_builder_add_val(
     	intv3 += t4-t3;
     	intv4 += t5-t4;
 	if (count > 1000000) {
-	    printf("[%s] %d %ld %ld %ld %ld\n", __func__, count, intv1, intv2 ,intv3, intv4);
+	    printf("[%s] %ld.%06ld %d %lu %lu %lu %lu\n", 
+			    __func__, 
+			    startstamp.tv_sec,
+			    startstamp.tv_usec,
+			    count, 
+			    intv1, 
+			    intv2,
+			    intv3, 
+			    intv4);
 	    count = intv1 = intv2 = intv3 = intv4 = 0;
 	}
     }

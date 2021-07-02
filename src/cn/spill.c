@@ -183,6 +183,7 @@ kv_spill_abort(struct cn_tstate_omf *omf, void *arg)
  *   - Each input iterator must produce keys in sorted order.
  *   - Iterator iterv[i] must contain newer entries than iterv[i+1].
  */
+//#define DEBUG_KV_SPILL
 static merr_t
 kv_spill(struct cn_compaction_work *w)
 {
@@ -229,9 +230,11 @@ kv_spill(struct cn_compaction_work *w)
     int new_key_count = 0;
     int get_values_count = 0;
 #ifdef DEBUG_KV_SPILL
+    struct timeval startstamp;
     u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 =  0, t9 = 0;
     //u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0;
     u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0, intv5 = 0, intv6 = 0, intv7 = 0, intv8 = 0 ;
+    gettimeofday(&startstamp, NULL);
 #endif
 
 
@@ -654,8 +657,10 @@ done:
 		    (t8 - t7)/1000000);
 		    */
 #ifdef DEBUG_KV_SPILL
-    printf("[%s] %d %d %ld %ld %ld %ld %ld %ld %ld %ld\n", 
+    printf("[%s] %ld.%06ld %d %d %ld %ld %ld %ld %ld %ld %ld %ld\n", 
 		    __func__,
+		    startstamp.tv_sec,
+		    startstamp.tv_usec,
 		    new_key_count,
 		    get_values_count,
 		    intv1, 

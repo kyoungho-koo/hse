@@ -132,6 +132,7 @@ _vblock_write(struct vblock_builder *bld, uint debug)
     struct cn_merge_stats *stats = bld->mstats;
     u64                    tstart;
 #ifdef DEBUG__VBLOCK_WRITE
+    struct timeval startstamp;
     static u32 ing_mblw_cnt = 0;
     static u32 comp_mblw_cnt = 0;
     static u64 ing_mblw_intv = 0;
@@ -151,6 +152,7 @@ _vblock_write(struct vblock_builder *bld, uint debug)
 #endif
     u64 tmp = 0;
 
+    gettimeofday(&startstamp, NULL);
 #endif
 
     /*
@@ -263,10 +265,13 @@ _vblock_write(struct vblock_builder *bld, uint debug)
 #endif
 
 
-	    printf("[%s] ing_mblw_cnt: %d comp_mblw_cnt: %d "
+	    printf("[%s] %ld.%06ld ing_mblw_cnt: %d comp_mblw_cnt: %d "
 		   "ing_mblw_intv(us): %ld comp_mblw_intv(us): %ld "
 		   "ing_mblw_len: %ld comp_mblw_len: %ld ing_delay: %ld ideal_rate: %d\n",
-		   __func__, ing_mblw_cnt, comp_mblw_cnt, 
+		   __func__, 
+		    startstamp.tv_sec,
+		    startstamp.tv_usec,
+		   ing_mblw_cnt, comp_mblw_cnt, 
 		   ing_mblw_intv, comp_mblw_intv, 
 		   ing_mblw_len, comp_mblw_len, ing_delay, ideal_rate); 
 	    // ing_delay);
@@ -380,6 +385,7 @@ vbb_destroy(struct vblock_builder *bld)
 }
 
 /* Add a value to vblock.  Create new vblock if needed. */
+//#define DEBUG_VBB_ADD_ENTRY
 merr_t
 vbb_add_entry(
     struct vblock_builder *bld,
@@ -393,11 +399,12 @@ vbb_add_entry(
     merr_t err;
     uint   voff, space, bytes;
 #ifdef DEBUG_VBB_ADD_ENTRY
+    struct timeval startstamp;
     static int count;
     static u64 loop, write;
     static u64 intv1 = 0, intv2 = 0, intv3 = 0, intv4 = 0;
     u64 t1 = 0, t2 = 0, t3 = 0, t4 = 0 , t5 = 0;
-    static u64 trigger = 0;
+    gettimeofday(&startstamp, NULL);
 #endif
 
     assert(!bld->destruct);
@@ -457,7 +464,6 @@ vbb_add_entry(
 #endif
             err = _vblock_write(bld, debug);
 #ifdef DEBUG_VBB_ADD_ENTRY
-	    trigger = 0;
             if (debug) {
 	        t5 = get_time_ns();
 		intv4 += t5 - t4;
@@ -489,10 +495,16 @@ vbb_add_entry(
 	count ++;
     	//intv3 += t4-t3;
 	if (count > 1000000) {
-	    printf("[%s] %d %ld %ld %ld %ld %ld\n", __func__, count, intv1, intv2, intv4, loop, write);
-	    if (write && intv4/write > 50000) {
-		trigger = intv4/write;
-	    }
+	    printf("[%s] %ld.%06ld %d %ld %ld %ld %ld %ld\n", 
+			    __func__, 
+			    startstamp.tv_sec,
+			    startstamp.tv_usec,
+			    count, 
+			    intv1, 
+			    intv2, 
+			    intv4, 
+			    loop, 
+			    write);
 	    count = intv1 = intv2 = intv3 = intv4 = loop = write = 0;
 	}
     }
